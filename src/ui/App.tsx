@@ -12,6 +12,9 @@ import type { SupportedDialect, SupportedLanguage, TransformMode } from '../lib/
 import { availableLanguages, transformText } from '../lib/transform';
 
 const initialText = 'No sé decirte\nCómo fue\nNi explicarme qué pasó';
+const highlightedTextLimit = 4000;
+const highlightedTokenLimit = 1500;
+const replacementsPerPage = 50;
 
 function readTextFile(file: File) {
   if (typeof file.text === 'function') {
@@ -32,9 +35,13 @@ export function App() {
   const [dialect, setDialect] = useState<SupportedDialect>('seseo-yeismo');
   const [mode, setMode] = useState<TransformMode>('automatic');
   const [manualSelections, setManualSelections] = useState<Record<string, string>>({});
+  const [reviewPage, setReviewPage] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [hasFileError, setHasFileError] = useState(false);
+  const [hasCopyError, setHasCopyError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRevision = useRef(0);
+  const copyRevision = useRef(0);
 
   const selectedLanguage = availableLanguages.find((item) => item.language === language)!;
   const result = useMemo(
@@ -47,6 +54,16 @@ export function App() {
       }),
     [dialect, input, language, manualSelections, mode],
   );
+  const showPlainResult =
+    result.output.length > highlightedTextLimit || result.tokens.length > highlightedTokenLimit;
+  const reviewPageCount = Math.ceil(result.replacements.length / replacementsPerPage);
+  const firstReplacement = reviewPage * replacementsPerPage;
+
+  const replaceInput = (text: string) => {
+    setInput(text);
+    setManualSelections({});
+    setReviewPage(0);
+  };
 
   const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const picker = event.currentTarget;
@@ -57,19 +74,38 @@ export function App() {
 
     const revision = ++inputRevision.current;
     picker.value = '';
-    const text = await readTextFile(file);
+    setHasFileError(false);
+    let text: string;
+    try {
+      text = await readTextFile(file);
+    } catch {
+      if (revision === inputRevision.current) setHasFileError(true);
+      return;
+    }
+
     if (revision !== inputRevision.current) {
       return;
     }
 
-    setInput(text);
-    setManualSelections({});
+    replaceInput(text);
   };
 
   const copyOutput = async () => {
-    await navigator.clipboard.writeText(result.output);
+    const revision = ++copyRevision.current;
+    setCopied(false);
+    setHasCopyError(false);
+    try {
+      await navigator.clipboard.writeText(result.output);
+    } catch {
+      if (revision === copyRevision.current) setHasCopyError(true);
+      return;
+    }
+
+    if (revision !== copyRevision.current) return;
     setCopied(true);
-    window.setTimeout(() => setCopied(false), 1400);
+    window.setTimeout(() => {
+      if (revision === copyRevision.current) setCopied(false);
+    }, 1400);
   };
 
   const downloadOutput = () => {
@@ -141,9 +177,9 @@ export function App() {
             </select>
           </label>
 
-          <div className="segmented" aria-label="Modo de transformación">
+          <div className="segmented" role="group" aria-label="Modo de transformación">
             <button
-              className={mode === 'automatic' ? 'is-active' : ''}
+              aria-pressed={mode === 'automatic'}
               type="button"
               onClick={() => setMode('automatic')}
             >
@@ -151,7 +187,7 @@ export function App() {
               Visual
             </button>
             <button
-              className={mode === 'manual' ? 'is-active' : ''}
+              aria-pressed={mode === 'manual'}
               type="button"
               onClick={() => setMode('manual')}
             >
@@ -167,6 +203,7 @@ export function App() {
               <h2 id="input-title">Texto original</h2>
               <button
                 aria-label="Abrir selector TXT"
+                aria-describedby={hasFileError ? 'file-error' : undefined}
                 className="icon-button"
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -176,19 +213,22 @@ export function App() {
               </button>
               <input
                 ref={fileInputRef}
-                className="sr-only"
+                hidden
                 type="file"
                 accept=".txt,text/plain"
                 onChange={handleFile}
                 aria-label="Subir TXT"
               />
             </div>
+            <p id="file-error" className="panel__error" role="alert">
+              {hasFileError ? 'No se pudo leer el archivo TXT. Vuelve a seleccionarlo o pega el texto.' : null}
+            </p>
             <textarea
               value={input}
               onChange={(event) => {
                 inputRevision.current++;
-                setInput(event.target.value);
-                setManualSelections({});
+                setHasFileError(false);
+                replaceInput(event.target.value);
               }}
               spellCheck="false"
               aria-label="Texto original"
@@ -199,7 +239,12 @@ export function App() {
             <div className="panel__header">
               <h2 id="output-title">Resultado</h2>
               <div className="button-row">
-                <button className="icon-button" type="button" onClick={copyOutput}>
+                <button
+                  className="icon-button"
+                  type="button"
+                  aria-describedby={hasCopyError ? 'copy-error' : undefined}
+                  onClick={copyOutput}
+                >
                   {copied ? <Check size={17} aria-hidden="true" /> : <Clipboard size={17} aria-hidden="true" />}
                   <span>{copied ? 'Copiado' : 'Copiar'}</span>
                 </button>
@@ -214,15 +259,31 @@ export function App() {
                 </button>
               </div>
             </div>
-            <output className="output-box" aria-label="Texto transformado" aria-live="polite">
-              {result.tokens.map((token) =>
-                token.replacementId ? (
-                  <mark key={token.id}>{token.output}</mark>
-                ) : (
-                  <span key={token.id}>{token.output}</span>
-                ),
-              )}
-            </output>
+            <p id="copy-error" className="panel__error" role="alert">
+              {hasCopyError ? 'No se pudo copiar el resultado. Inténtalo de nuevo o descárgalo como TXT.' : null}
+            </p>
+            {showPlainResult ? (
+              <>
+                <p id="plain-result-note" className="result-note">Texto completo sin resaltado.</p>
+                <textarea
+                  className="output-box"
+                  aria-label="Texto transformado"
+                  aria-describedby="plain-result-note"
+                  value={result.output}
+                  readOnly
+                />
+              </>
+            ) : (
+              <output className="output-box" aria-label="Texto transformado" aria-live="polite">
+                {result.tokens.map((token) =>
+                  token.replacementId ? (
+                    <mark key={token.id}>{token.output}</mark>
+                  ) : (
+                    <span key={token.id}>{token.output}</span>
+                  ),
+                )}
+              </output>
+            )}
           </section>
         </div>
 
@@ -232,8 +293,29 @@ export function App() {
               <h2 id="review-title">Revisión</h2>
               <span>{result.replacements.length} opciones</span>
             </div>
+            {reviewPageCount > 1 && (
+              <div className="review-pagination" role="group" aria-label="Páginas de revisión">
+                <button
+                  className="icon-button"
+                  type="button"
+                  disabled={reviewPage === 0}
+                  onClick={() => setReviewPage(reviewPage - 1)}
+                >
+                  Anterior
+                </button>
+                <span role="status">Página {reviewPage + 1} de {reviewPageCount}</span>
+                <button
+                  className="icon-button"
+                  type="button"
+                  disabled={reviewPage >= reviewPageCount - 1}
+                  onClick={() => setReviewPage(reviewPage + 1)}
+                >
+                  Siguiente
+                </button>
+              </div>
+            )}
             <div className="replacement-list">
-              {result.replacements.map((replacement) => (
+              {result.replacements.slice(firstReplacement, firstReplacement + replacementsPerPage).map((replacement) => (
                 <label className="replacement-row" key={replacement.id}>
                   <span className="replacement-row__word">{replacement.original}</span>
                   <select

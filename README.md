@@ -25,6 +25,7 @@ La app abre con Vite y procesa todo en el navegador. No hay backend ni subida de
 - Dialecto v1: seseo + yeísmo.
 - Modo visual: aplica reglas fonéticas a todas las palabras posibles.
 - Modo manual: permite mantener la palabra original en cada sustitución.
+- Los resultados largos se muestran completos sin resaltado. La revisión manual se divide en páginas de 50 opciones. Tanto la copia como la descarga incluyen el resultado completo.
 - Reglas principales: `s→z`, `c(e/i)→s`, `z→s`, `qu→k`, `c(a/o/u)→k`, `b↔v`, `ll↔y`, `h` muda, `x→ks`.
 - Se conserva la diéresis en `güe` y `güi`. La alternancia de `s` y `z` al final de palabra se limita a casos con una sola vocal escrita sin tilde, como `voz → bos`. Así se evita cambiar la sílaba tónica en casos como `casas → kazas`.
 

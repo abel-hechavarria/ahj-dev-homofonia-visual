@@ -8,12 +8,11 @@ import type {
 import { applyOriginalCasing, normalizeLookupWord, tokenize } from '../text';
 
 const SOFT_C_MARKER = '\uE000';
-const Z_MARKER = '\uE001';
 const B_MARKER = '\uE002';
 const LL_MARKER = '\uE003';
 const CH_MARKER = '\uE004';
 
-const RULE_COUNT = 12;
+const RULE_COUNT = 11;
 
 interface VisualTransform {
   value: string;
@@ -38,7 +37,8 @@ function replaceWhenChanged(
 
 function visualTransformWord(word: string): VisualTransform {
   const ruleIds = new Set<string>();
-  let transformed = normalizeLookupWord(word);
+  const normalizedWord = normalizeLookupWord(word);
+  let transformed = normalizedWord;
 
   transformed = transformed.replace(/ch/g, CH_MARKER);
 
@@ -53,15 +53,6 @@ function visualTransformWord(word: string): VisualTransform {
     /qu(?=[eéií])/g,
     'k',
     'qu-k',
-    ruleIds,
-  );
-
-  transformed = replaceWhenChanged(
-    transformed,
-    /gü(?=[eéií])/,
-    /gü(?=[eéií])/g,
-    'gu',
-    'gue-gui',
     ruleIds,
   );
 
@@ -107,9 +98,20 @@ function visualTransformWord(word: string): VisualTransform {
     ruleIds,
   );
 
-  transformed = replaceWhenChanged(transformed, /z/, /z/g, Z_MARKER, 'z-s', ruleIds);
-  transformed = replaceWhenChanged(transformed, /s/, /s/g, 'z', 's-z', ruleIds);
-  transformed = transformed.replaceAll(SOFT_C_MARKER, 's').replaceAll(Z_MARKER, 's');
+  transformed = transformed.replace(/[sz]/g, (letter, offset: number, source: string) => {
+    if (offset === source.length - 1) {
+      // Final s and z imply different stress in multisyllabic words.
+      // Swap only when a single written vowel makes the stress unambiguous.
+      const vowels = normalizedWord.match(/[aeiouáéíóúü]/g);
+      if (vowels?.length !== 1 || /[áéíóú]/.test(vowels[0])) {
+        return letter;
+      }
+    }
+
+    ruleIds.add(letter === 's' ? 's-z' : 'z-s');
+    return letter === 's' ? 'z' : 's';
+  });
+  transformed = transformed.replaceAll(SOFT_C_MARKER, 's');
 
   if (transformed === 'y') {
     ruleIds.add('y-i');
@@ -123,7 +125,7 @@ function visualTransformWord(word: string): VisualTransform {
   transformed = transformed.replaceAll(LL_MARKER, 'y').replaceAll(CH_MARKER, 'ch');
 
   return {
-    value: applyOriginalCasing(word, transformed),
+    value: transformed === normalizedWord ? word : applyOriginalCasing(word, transformed),
     ruleIds: [...ruleIds],
   };
 }

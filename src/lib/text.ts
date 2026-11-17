@@ -1,7 +1,7 @@
 import type { TransformToken } from './languageTypes';
 
 const WORD_RE = /\p{L}+/u;
-const TOKEN_RE = /\p{L}+|[^\p{L}]+/gu;
+const TOKEN_RE = /\p{L}[\p{L}\p{M}]*|[^\p{L}]+/gu;
 
 export function tokenize(input: string): TransformToken[] {
   const tokens: TransformToken[] = [];

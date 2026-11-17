@@ -34,6 +34,7 @@ export function App() {
   const [manualSelections, setManualSelections] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputRevision = useRef(0);
 
   const selectedLanguage = availableLanguages.find((item) => item.language === language)!;
   const result = useMemo(
@@ -48,15 +49,21 @@ export function App() {
   );
 
   const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    const picker = event.currentTarget;
+    const file = picker.files?.[0];
     if (!file) {
       return;
     }
 
+    const revision = ++inputRevision.current;
+    picker.value = '';
     const text = await readTextFile(file);
+    if (revision !== inputRevision.current) {
+      return;
+    }
+
     setInput(text);
     setManualSelections({});
-    event.target.value = '';
   };
 
   const copyOutput = async () => {
@@ -179,6 +186,7 @@ export function App() {
             <textarea
               value={input}
               onChange={(event) => {
+                inputRevision.current++;
                 setInput(event.target.value);
                 setManualSelections({});
               }}

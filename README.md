@@ -1,38 +1,45 @@
 # Homofonía Visual
 
-App web local para transformar texto mediante homofonía visual en español.
+Homofonía Visual cambia la escritura de un texto para que se pueda leer de forma parecida. Aplica reglas del español seseante y yeísta. Puedes pegar texto o abrir un archivo TXT, revisar las sustituciones y copiar o descargar el resultado. El texto se procesa en el navegador.
 
-## Uso
+## Primeros pasos
 
-Usa Node.js 22.13+ (rama 22), 24 o 26+, y pnpm 11.7.0.
+Necesitas Git, pnpm 11.7.0 y Node.js 24, recomendado y probado en CI. También se admiten Node.js 22 a partir de 22.13 y Node.js 26 o posterior.
 
 ```bash
+git clone https://github.com/abel-hechavarria/ahj-dev-homofonia-visual.git
+cd ahj-dev-homofonia-visual
 pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-La app abre con Vite y procesa todo en el navegador. No hay backend ni subida de texto a servidor.
+Abre la dirección local que indique Vite. Pega texto en **Texto original** o usa **TXT** para abrir un archivo en UTF-8.
 
-## Scripts
+## Modos de transformación
 
-- `pnpm dev`: arranca Vite.
-- `pnpm test`: ejecuta Vitest.
-- `pnpm build`: valida TypeScript y crea `dist/`.
+- **Visual** aplica las reglas al escribir y resalta las sustituciones en textos cortos.
+- **Manual** ofrece la opción **Sin cambio** para cada sustitución. Las opciones se agrupan en páginas de 50.
+- Los resultados largos se muestran completos sin resaltado. **Copiar** y **Descargar TXT** incluyen todo el resultado en ambos modos.
 
-## Motor lingüístico
+Por ejemplo, `Quiero contar mi historia.` se convierte en `Kiero kontar mi iztoria.`
 
-- Idioma v1: español.
-- Dialecto v1: seseo + yeísmo.
-- Modo visual: aplica reglas fonéticas a todas las palabras posibles.
-- Modo manual: permite mantener la palabra original en cada sustitución.
-- Los resultados largos se muestran completos sin resaltado. La revisión manual se divide en páginas de 50 opciones. Tanto la copia como la descarga incluyen el resultado completo.
-- Reglas principales: `s↔z`, `c(e/i)→s`, `qu→k`, `c(a/o/u)→k`, `b↔v`, `ll↔y` y cambios de `x` y `h` según el contexto.
-- La `x` cambia en casos como `taxi → taksi`, `xilófono → silófono` y `México → Méjiko`. Se conserva ante consonante y en casos de pronunciación incierta. La `h` aspirada en préstamos conocidos y la `h` en grupos como `hue` o `hie` se mantienen. [RAE/ASALE sobre x](https://www.rae.es/dpd/x) · [RAE/ASALE sobre h](https://www.rae.es/dpd/h)
-- Se conserva la diéresis en `güe` y `güi`. La alternancia de `s` y `z` al final de palabra se limita a casos con una sola vocal escrita sin tilde, como `voz → bos`. Así se evita cambiar la sílaba tónica en casos como `casas → kazas`.
+## Reglas y alcance
 
-Ejemplo:
+Las reglas incluyen `s↔z`, `c(e/i)→s`, `qu→k`, `c(a/o/u)→k`, `b↔v` y `ll↔y`. Entre otras precauciones, el motor conserva la diéresis en `güe` y `güi`, y solo alterna `s` y `z` finales cuando hay una sola vocal escrita sin tilde. Por ejemplo, `voz → bos`, pero `casas → kazas`.
 
-```text
-No sé decirte
-No zé desirte
+La `x` cambia según el contexto, como en `taxi → taksi`, `xilófono → silófono` y `México → Méjiko`. Se conserva ante consonante y en casos de pronunciación incierta. La `h` se mantiene en préstamos conocidos donde se pronuncia y en grupos como `hue` o `hie`. [RAE/ASALE sobre x](https://www.rae.es/dpd/x) · [RAE/ASALE sobre h](https://www.rae.es/dpd/h)
+
+La transformación es una aproximación basada en reglas. Las variantes regionales, los nombres propios y los préstamos pueden requerir revisión manual.
+
+## Pruebas y compilación
+
+```bash
+pnpm test
+pnpm build
 ```
+
+La compilación comprueba TypeScript y genera `dist/`. [GitHub Actions](https://github.com/abel-hechavarria/ahj-dev-homofonia-visual/actions/workflows/ci.yml) comprueba la instalación desde el lockfile, los tests y la compilación en Windows y Ubuntu.
+
+## Reportar un fallo
+
+Abre una [incidencia en GitHub](https://github.com/abel-hechavarria/ahj-dev-homofonia-visual/issues) con un ejemplo breve, el resultado esperado y el obtenido. Si el fallo afecta a la interfaz, incluye el navegador y los pasos para reproducirlo. Usa texto de ejemplo sin datos personales.

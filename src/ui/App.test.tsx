@@ -161,7 +161,7 @@ describe('App', () => {
 
     await waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        'No zé desirte\nKómo fue\nNi eksplikarme ké pazó',
+        'No zé desirte\nKómo fue\nNi explikarme ké pazó',
       );
     });
   });

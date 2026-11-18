@@ -27,18 +27,14 @@ export function normalizeLookupWord(value: string): string {
   return value.toLowerCase().normalize('NFC');
 }
 
-export function applyOriginalCasing(original: string, replacement: string): string {
-  if (original.toLocaleUpperCase('es') === original) {
-    return replacement.toLocaleUpperCase('es');
-  }
-
-  const [first = '', ...rest] = original;
-  const tail = rest.join('');
-  if (
-    first.toLocaleUpperCase('es') === first &&
-    tail.toLocaleLowerCase('es') === tail
-  ) {
-    return `${replacement.charAt(0).toLocaleUpperCase('es')}${replacement.slice(1)}`;
+export function preserveTitleCase(original: string, replacement: string): string {
+  const first = original.match(/^[\p{Lu}\p{Lt}]/u)?.[0];
+  if (first) {
+    const tail = original.slice(first.length);
+    if (tail === tail.toLowerCase()) {
+      const [initial = ''] = replacement;
+      return initial.toUpperCase() + replacement.slice(initial.length).toLowerCase();
+    }
   }
 
   return replacement;

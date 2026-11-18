@@ -5,101 +5,90 @@ import type {
   TransformResult,
   TransformToken,
 } from '../languageTypes';
-import { applyOriginalCasing, normalizeLookupWord, tokenize } from '../text';
+import { normalizeLookupWord, preserveTitleCase, tokenize } from '../text';
 
-const SOFT_C_MARKER = '\uE000';
-const B_MARKER = '\uE002';
-const LL_MARKER = '\uE003';
-const CH_MARKER = '\uE004';
+const LOWERCASE_LL_MARKER = '\uE003';
+const UPPERCASE_LL_MARKER = '\uE004';
 
 const RULE_COUNT = 11;
+
+// Documented lexical families, not a general guess for unfamiliar names.
+// https://www.rae.es/dpd/x
+const xWithJSound = /^(?:méxico$|mexican|mexiquen|oaxa(?:ca$|queñ)|texas$|texan|ximena$|ximénez$|mexía$|xiotes?$)/;
+const xWithSSound = /^(?:x(?:il|en[oó]|er[oó]|ant)|antixen[oó]fob|megaxil[oó]fon|minixerotec|tlaxcal)/;
+const xWithVariableSound = /^(?:auxili|(?:in)?exact|xola$|mixiotes?$|xoloitzcuintl)/;
+
+// Preserve aspirated loans and h before diphthongs with possible reinforcement.
+// https://www.rae.es/dpd/h
+const aspiratedH = /^(?:hámster|haik[uú]|hachís|hándicap|haw[aá]i|hegel|d[ií]rham)/;
+const silentH = /(?<!c)h(?!u[aeiáéí]|ie)/gi;
 
 interface VisualTransform {
   value: string;
   ruleIds: string[];
 }
 
-function replaceWhenChanged(
+function matchCase(source: string, replacement: string): string {
+  return source === source.toLowerCase() ? replacement : replacement.toUpperCase();
+}
+
+function replaceWithCase(
   value: string,
-  test: RegExp,
-  replace: RegExp,
+  pattern: RegExp,
   replacement: string,
   ruleId: string,
   ruleIds: Set<string>,
-) {
-  if (!test.test(value)) {
+): string {
+  return value.replace(pattern, (match: string) => {
+    ruleIds.add(ruleId);
+    return matchCase(match, replacement);
+  });
+}
+
+function rewriteX(value: string, original: string, ruleIds: Set<string>): string {
+  if (!/[xX]/.test(value) || xWithVariableSound.test(original)) {
     return value;
   }
 
-  ruleIds.add(ruleId);
-  return value.replace(replace, replacement);
+  if (xWithJSound.test(original)) {
+    return replaceWithCase(value, /x/i, 'j', 'x-j', ruleIds);
+  }
+
+  if (xWithSSound.test(original)) {
+    return replaceWithCase(value, /x/i, 's', 'x-s', ruleIds);
+  }
+
+  // Between vowels or after a vowel at the end of the word.
+  return replaceWithCase(value, /(?<=[aeiouáéíóúü])x(?=[aeiouáéíóúü]|$)/gi, 'ks', 'x-ks', ruleIds);
 }
 
 function visualTransformWord(word: string): VisualTransform {
   const ruleIds = new Set<string>();
-  const normalizedWord = normalizeLookupWord(word);
-  let transformed = normalizedWord;
-
-  transformed = transformed.replace(/ch/g, CH_MARKER);
-
-  if (/ll/.test(transformed)) {
+  const source = word.normalize('NFC');
+  const normalizedWord = source.toLowerCase();
+  // Hold original ll digraphs until the y rule has finished.
+  let transformed = source.replace(/ll/gi, (match: string) => {
     ruleIds.add('ll-y');
-    transformed = transformed.replace(/ll/g, LL_MARKER);
+    return match === 'll' ? LOWERCASE_LL_MARKER : UPPERCASE_LL_MARKER;
+  });
+
+  transformed = replaceWithCase(transformed, /qu(?=[eéií])/gi, 'k', 'qu-k', ruleIds);
+  transformed = replaceWithCase(transformed, /g(?=[eéií])/gi, 'j', 'ge-gi-j', ruleIds);
+  // Leave ch intact and defer soft c so its new s is not swapped again.
+  transformed = replaceWithCase(transformed, /c(?![heéií])/gi, 'k', 'hard-c-k', ruleIds);
+  transformed = replaceWithCase(transformed, /q/gi, 'k', 'q-k', ruleIds);
+  transformed = transformed.replace(/[bv]/gi, (letter: string) => {
+    const isB = letter.toLowerCase() === 'b';
+    ruleIds.add(isB ? 'b-v' : 'v-b');
+    return matchCase(letter, isB ? 'v' : 'b');
+  });
+
+  if (!aspiratedH.test(normalizedWord)) {
+    transformed = replaceWithCase(transformed, silentH, '', 'silent-h', ruleIds);
   }
 
-  transformed = replaceWhenChanged(
-    transformed,
-    /qu(?=[eéií])/,
-    /qu(?=[eéií])/g,
-    'k',
-    'qu-k',
-    ruleIds,
-  );
-
-  transformed = replaceWhenChanged(
-    transformed,
-    /g(?=[eéií])/,
-    /g(?=[eéií])/g,
-    'j',
-    'ge-gi-j',
-    ruleIds,
-  );
-
-  transformed = replaceWhenChanged(
-    transformed,
-    /c(?=[eéií])/,
-    /c(?=[eéií])/g,
-    SOFT_C_MARKER,
-    'soft-c-s',
-    ruleIds,
-  );
-
-  transformed = replaceWhenChanged(
-    transformed,
-    /c/,
-    /c/g,
-    'k',
-    'hard-c-k',
-    ruleIds,
-  );
-
-  transformed = replaceWhenChanged(transformed, /q/, /q/g, 'k', 'q-k', ruleIds);
-
-  transformed = replaceWhenChanged(transformed, /b/, /b/g, B_MARKER, 'b-v', ruleIds);
-  transformed = replaceWhenChanged(transformed, /v/, /v/g, 'b', 'v-b', ruleIds);
-  transformed = transformed.replaceAll(B_MARKER, 'v');
-
-  transformed = replaceWhenChanged(
-    transformed,
-    /h/,
-    /h/g,
-    '',
-    'silent-h',
-    ruleIds,
-  );
-
-  transformed = transformed.replace(/[sz]/g, (letter, offset: number, source: string) => {
-    if (offset === source.length - 1) {
+  transformed = transformed.replace(/[sz]/gi, (letter: string, offset: number, value: string) => {
+    if (offset === value.length - 1) {
       // Final s and z imply different stress in multisyllabic words.
       // Swap only when a single written vowel makes the stress unambiguous.
       const vowels = normalizedWord.match(/[aeiouáéíóúü]/g);
@@ -108,24 +97,24 @@ function visualTransformWord(word: string): VisualTransform {
       }
     }
 
-    ruleIds.add(letter === 's' ? 's-z' : 'z-s');
-    return letter === 's' ? 'z' : 's';
+    const isS = letter.toLowerCase() === 's';
+    ruleIds.add(isS ? 's-z' : 'z-s');
+    return matchCase(letter, isS ? 'z' : 's');
   });
-  transformed = transformed.replaceAll(SOFT_C_MARKER, 's');
+  transformed = replaceWithCase(transformed, /c(?=[eéií])/gi, 's', 'soft-c-s', ruleIds);
 
-  if (transformed === 'y') {
+  if (transformed === 'y' || transformed === 'Y') {
     ruleIds.add('y-i');
-    transformed = 'i';
-  } else if (/y(?=[aeiouáéíóúü])/.test(transformed)) {
-    ruleIds.add('y-ll');
-    transformed = transformed.replace(/y(?=[aeiouáéíóúü])/g, 'll');
+    transformed = matchCase(transformed, 'i');
+  } else {
+    transformed = replaceWithCase(transformed, /y(?=[aeiouáéíóúü])/gi, 'll', 'y-ll', ruleIds);
   }
 
-  transformed = replaceWhenChanged(transformed, /x/, /x/g, 'ks', 'x-ks', ruleIds);
-  transformed = transformed.replaceAll(LL_MARKER, 'y').replaceAll(CH_MARKER, 'ch');
+  transformed = rewriteX(transformed, normalizedWord, ruleIds);
+  transformed = transformed.replaceAll(LOWERCASE_LL_MARKER, 'y').replaceAll(UPPERCASE_LL_MARKER, 'Y');
 
   return {
-    value: transformed === normalizedWord ? word : applyOriginalCasing(word, transformed),
+    value: transformed === source ? word : preserveTitleCase(source, transformed),
     ruleIds: [...ruleIds],
   };
 }
